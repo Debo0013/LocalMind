@@ -453,3 +453,78 @@ textarea {
     background: rgba(255, 255, 255, 0.05);
     border-color: rgba(255, 255, 255, 0.3);
 }
+
+/* File Browser */
+.browser-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.browser-entry:hover {
+    background-color: var(--input-bg);
+}
+
+.browser-entry-file:hover {
+    background-color: rgba(88, 166, 255, 0.1);
+}
+
+.entry-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.entry-name {
+    flex: 1;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entry-size {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.browser-loading,
+.browser-error,
+.browser-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.browser-error {
+    color: var(--danger);
+}
+
+/* Model Status */
+.model-status {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.model-status.loaded {
+    color: var(--success);
+}
+
+.model-status.loading {
+    color: var(--accent-color);
+}
+
+.model-status.error {
+    color: var(--danger);
+}
+
+/* Modal scrollable body */
+.modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
