@@ -15,6 +15,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const systemPromptInput = document.getElementById('system-prompt');
     const resetSettingsBtn = document.getElementById('reset-settings');
 
+    // Model Picker DOM Elements
+    const modelPathInput = document.getElementById('model-path-input');
+    const pickModelBtn = document.getElementById('pick-model-btn');
+    const nCtxInput = document.getElementById('n-ctx-input');
+    const nThreadsInput = document.getElementById('n-threads-input');
+    const nGpuLayersInput = document.getElementById('n-gpu-layers-input');
+    const loadModelBtn = document.getElementById('load-model-btn');
+    const modelStatusText = document.getElementById('model-status-text');
+    const fileBrowserModal = document.getElementById('file-browser-modal');
+    const browserCurrentPath = document.getElementById('browser-current-path');
+    const browserEntries = document.getElementById('browser-entries');
+    const browserGoUpBtn = document.getElementById('browser-go-up-btn');
+    const closeBrowserBtn = document.getElementById('close-browser-btn');
+
     // Global Error Catcher for Browser Console issues
     window.onerror = function (msg, url, lineNo, columnNo, error) {
         console.error('Window Error:', msg, 'at', url, ':', lineNo);
@@ -38,13 +52,31 @@ document.addEventListener('DOMContentLoaded', () => {
         history: []
     };
 
+    // Model settings state with localStorage persistence
+    let modelPath = localStorage.getItem('modelPath') || '';
+    let nCtx = parseInt(localStorage.getItem('nCtx')) || 2048;
+    let nThreads = parseInt(localStorage.getItem('nThreads')) || 10;
+    let nGpuLayers = parseInt(localStorage.getItem('nGpuLayers')) || 20;
+
+    // File browser state
+    let currentBrowserPath = '';
+
     // Initialize UI
     apiUrlInput.value = state.apiUrl;
     modelNameInput.value = state.model;
     systemPromptInput.value = state.systemPrompt;
 
+    // Initialize model settings UI
+    modelPathInput.value = modelPath;
+    nCtxInput.value = nCtx;
+    nThreadsInput.value = nThreads;
+    nGpuLayersInput.value = nGpuLayers;
+
     // Check connection on load
     checkConnection();
+
+    // Fetch current model status on page load
+    fetchModelStatus();
 
     // Event Listeners
     sendBtn.addEventListener('click', handleSendMessage);
@@ -85,6 +117,17 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('model', state.model);
         localStorage.setItem('systemPrompt', state.systemPrompt);
 
+        // Save model parameters
+        modelPath = modelPathInput.value.trim();
+        nCtx = parseInt(nCtxInput.value) || 2048;
+        nThreads = parseInt(nThreadsInput.value) || 10;
+        nGpuLayers = parseInt(nGpuLayersInput.value) || 20;
+
+        localStorage.setItem('modelPath', modelPath);
+        localStorage.setItem('nCtx', nCtx.toString());
+        localStorage.setItem('nThreads', nThreads.toString());
+        localStorage.setItem('nGpuLayers', nGpuLayers.toString());
+
         settingsModal.classList.remove('active');
         checkConnection();
     });
@@ -97,6 +140,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Model Picker Event Listeners
+    pickModelBtn.addEventListener('click', () => {
+        openFileBrowser();
+    });
+
+    loadModelBtn.addEventListener('click', () => {
+        loadModel();
+    });
+
+    browserGoUpBtn.addEventListener('click', () => {
+        navigateUp();
+    });
+
+    closeBrowserBtn.addEventListener('click', () => {
+        fileBrowserModal.classList.remove('active');
+    });
+
+    fileBrowserModal.addEventListener('click', (e) => {
+        if (e.target === fileBrowserModal) {
+            fileBrowserModal.classList.remove('active');
+        }
+    });
 
     // Functions
     async function checkConnection() {
@@ -321,5 +387,219 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scrollToBottom() {
         chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    // --- File Browser Functions ---
+
+    async function openFileBrowser(path) {
+        fileBrowserModal.classList.add('active');
+        const browsePath = path || currentBrowserPath || '';
+        await fetchBrowserContents(browsePath);
+    }
+
+    async function fetchBrowserContents(path) {
+        browserEntries.innerHTML = '<div class="browser-loading">Loading...</div>';
+        try {
+            const url = path
+                ? `${currentOrigin}/api/browse?path=${encodeURIComponent(path)}`
+                : `${currentOrigin}/api/browse`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to browse: ${response.statusText}`);
+            }
+            const data = await response.json();
+            currentBrowserPath = data.current_path || '';
+            browserCurrentPath.textContent = currentBrowserPath || '/';
+            renderBrowserEntries(data.entries || []);
+        } catch (error) {
+            browserEntries.innerHTML = `<div class="browser-error">Error: ${error.message}</div>`;
+            console.error('File browser error:', error);
+        }
+    }
+
+    function renderBrowserEntries(entries) {
+        browserEntries.innerHTML = '';
+        if (entries.length === 0) {
+            browserEntries.innerHTML = '<div class="browser-empty">No .gguf files or directories found</div>';
+            return;
+        }
+        entries.forEach(entry => {
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'browser-entry';
+
+            const icon = entry.type === 'dir' ? '📁' : '📄';
+            const size = entry.type === 'file' && entry.size != null
+                ? formatFileSize(entry.size)
+                : '';
+
+            entryDiv.innerHTML = `
+                <span class="entry-icon">${icon}</span>
+                <span class="entry-name">${entry.name}</span>
+                ${size ? `<span class="entry-size">${size}</span>` : ''}
+            `;
+
+            if (entry.type === 'dir') {
+                entryDiv.classList.add('browser-entry-dir');
+                entryDiv.addEventListener('click', () => {
+                    navigateToDirectory(entry.name);
+                });
+            } else {
+                entryDiv.classList.add('browser-entry-file');
+                entryDiv.addEventListener('click', () => {
+                    selectModelFile(entry.name);
+                });
+            }
+
+            browserEntries.appendChild(entryDiv);
+        });
+    }
+
+    function navigateToDirectory(dirName) {
+        const newPath = currentBrowserPath
+            ? `${currentBrowserPath}/${dirName}`.replace(/\/\//g, '/')
+            : dirName;
+        fetchBrowserContents(newPath);
+    }
+
+    function navigateUp() {
+        if (!currentBrowserPath || currentBrowserPath === '/' || currentBrowserPath === 'C:\\') {
+            return;
+        }
+        // Handle both Unix and Windows paths
+        let parentPath;
+        if (currentBrowserPath.includes('\\')) {
+            const parts = currentBrowserPath.split('\\');
+            parts.pop();
+            parentPath = parts.join('\\') || parts[0] + '\\';
+        } else {
+            const parts = currentBrowserPath.split('/');
+            parts.pop();
+            parentPath = parts.join('/') || '/';
+        }
+        fetchBrowserContents(parentPath);
+    }
+
+    function selectModelFile(fileName) {
+        const fullPath = currentBrowserPath
+            ? `${currentBrowserPath}/${fileName}`.replace(/\/\//g, '/')
+            : fileName;
+        // Handle Windows paths
+        const normalizedPath = currentBrowserPath.includes('\\')
+            ? `${currentBrowserPath}\\${fileName}`
+            : fullPath;
+
+        modelPathInput.value = normalizedPath;
+        modelPath = normalizedPath;
+        localStorage.setItem('modelPath', modelPath);
+        fileBrowserModal.classList.remove('active');
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    // --- Model Loading Functions ---
+
+    async function loadModel() {
+        const path = modelPathInput.value.trim();
+        if (!path) {
+            modelStatusText.textContent = 'Error: No model path selected';
+            modelStatusText.className = 'model-status error';
+            return;
+        }
+
+        const params = {
+            model_path: path,
+            n_ctx: parseInt(nCtxInput.value) || 2048,
+            n_threads: parseInt(nThreadsInput.value) || 10,
+            n_gpu_layers: parseInt(nGpuLayersInput.value) || 20
+        };
+
+        // Show loading state
+        loadModelBtn.disabled = true;
+        loadModelBtn.textContent = 'Loading...';
+        modelStatusText.textContent = 'Loading model...';
+        modelStatusText.className = 'model-status loading';
+
+        try {
+            const response = await fetch(`${currentOrigin}/api/load-model`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                const modelName = path.split(/[/\\]/).pop();
+                modelStatusText.textContent = `Loaded: ${modelName}`;
+                modelStatusText.className = 'model-status loaded';
+
+                // Persist settings
+                localStorage.setItem('modelPath', path);
+                localStorage.setItem('nCtx', params.n_ctx.toString());
+                localStorage.setItem('nThreads', params.n_threads.toString());
+                localStorage.setItem('nGpuLayers', params.n_gpu_layers.toString());
+            } else {
+                const errorMsg = data.detail || data.error || 'Failed to load model';
+                modelStatusText.textContent = `Error: ${errorMsg}`;
+                modelStatusText.className = 'model-status error';
+            }
+        } catch (error) {
+            modelStatusText.textContent = `Error: ${error.message}`;
+            modelStatusText.className = 'model-status error';
+            console.error('Load model error:', error);
+        } finally {
+            loadModelBtn.disabled = false;
+            loadModelBtn.textContent = 'Load Model';
+        }
+    }
+
+    async function fetchModelStatus() {
+        try {
+            const response = await fetch(`${currentOrigin}/api/model-status`);
+            if (!response.ok) return;
+
+            const data = await response.json();
+
+            if (data.status === 'loaded' && data.model_path) {
+                const modelName = data.model_path.split(/[/\\]/).pop();
+                modelStatusText.textContent = `Loaded: ${modelName}`;
+                modelStatusText.className = 'model-status loaded';
+                modelPathInput.value = data.model_path;
+                modelPath = data.model_path;
+                localStorage.setItem('modelPath', modelPath);
+            } else if (data.status === 'loading') {
+                modelStatusText.textContent = 'Loading model...';
+                modelStatusText.className = 'model-status loading';
+            } else if (data.status === 'error') {
+                modelStatusText.textContent = 'Error loading model';
+                modelStatusText.className = 'model-status error';
+            } else {
+                modelStatusText.textContent = 'No model loaded';
+                modelStatusText.className = 'model-status';
+            }
+
+            // Update input fields from server state if available
+            if (data.n_ctx) {
+                nCtxInput.value = data.n_ctx;
+                nCtx = data.n_ctx;
+            }
+            if (data.n_threads) {
+                nThreadsInput.value = data.n_threads;
+                nThreads = data.n_threads;
+            }
+            if (data.n_gpu_layers != null) {
+                nGpuLayersInput.value = data.n_gpu_layers;
+                nGpuLayers = data.n_gpu_layers;
+            }
+        } catch (error) {
+            // Silently fail — server might not be running yet
+            console.log('Could not fetch model status:', error.message);
+        }
     }
 });
