@@ -504,7 +504,7 @@ Penalizes tokens that have already appeared in the generated text. The penalty m
 ## Project Structure
 
 ```
-Web_local_llm/
+LocalMind/
 ├── server.py             # FastAPI backend — routing, model loading, chat
 ├── context_manager.py    # Context trimming + optional summarization logic
 ├── hardware_detector.py  # Cross-platform hardware detection + profile engine
