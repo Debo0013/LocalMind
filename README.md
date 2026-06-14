@@ -513,7 +513,6 @@ LocalMind/
 ├── style.css             # Dark theme (GitHub-dark inspired)
 ├── requirements.txt      # Python dependencies (pinned versions)
 ├── INSTALL_LLAMA_CPP.md  # Platform-specific llama-cpp-python installation guide
-├── logic.md              # Internal design docs for development reference
 └── README.md             # This file
 ```
 
