@@ -164,7 +164,7 @@ Total context window (n_ctx)
 | < 3000 | Sliding window only (summary toggle ignored) |
 | ≥ 3000 | Sliding window when toggle OFF, summarize + protect when ON |
 
-The protected zone is a **token budget** (30% of input budget), not a fixed message count — short exchanges keep more pairs, long exchanges keep fewer, always at least one. See [logic.md](./logic.md) for the full algorithm.
+The protected zone is a **token budget** (30% of input budget), not a fixed message count — short exchanges keep more pairs, long exchanges keep fewer, always at least one.
 
 ---
 
