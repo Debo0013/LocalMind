@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const connWrap = document.getElementById('conn-wrap');
     const connText = document.getElementById('conn-text');
     const modelPillName = document.getElementById('model-pill-name');
+    const genText = document.getElementById('gen-text');
 
     // ---- Sidebar / nav ----
     const collapseBtn = document.getElementById('collapseBtn');
@@ -50,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const nGpuLayersInput = document.getElementById('n-gpu-layers-input');
     const loadModelBtn = document.getElementById('load-model-btn');
     const modelStatusText = document.getElementById('model-status-text');
+    const exportChatBtn = document.getElementById('export-chat-btn');
 
     const hwDetectionBanner = document.getElementById('hw-detection-banner');
     const hwBannerText = document.getElementById('hw-banner-text');
@@ -245,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const w = document.createElement('div');
             w.className = 'empty';
             w.id = 'welcome';
-            w.innerHTML = '<h1>Hello there</h1><p>Type a message or load a model to get started</p>';
+            w.innerHTML = '<h1>Hello there</h1><p>Load a model and start chatting — all local, all private.</p>';
             chatColumn.appendChild(w);
         }
         updateContextIndicator();
@@ -259,6 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             const page = item.dataset.page;
             document.querySelectorAll('.settings-page').forEach(p => p.classList.toggle('hidden', p.dataset.content !== page));
+            // The shared Reset/Save footer doesn't apply to the Export tab.
+            document.querySelector('.settings-footer')?.classList.toggle('hidden', page === 'export');
         });
     });
 
@@ -351,6 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============ File browser listeners ============
     pickModelBtn.addEventListener('click', () => openFileBrowser());
     loadModelBtn.addEventListener('click', () => loadModel());
+    exportChatBtn?.addEventListener('click', () => exportChat());
     browserGoUpBtn.addEventListener('click', () => navigateUp());
     closeBrowserBtn.addEventListener('click', () => closeOverlay(fileBrowserModal));
     fileBrowserModal.addEventListener('click', (e) => { if (e.target === fileBrowserModal) closeOverlay(fileBrowserModal); });
@@ -519,6 +524,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!line.trim()) continue;
                     try {
                         const json = JSON.parse(line);
+                        if (json.status === 'summarizing') {
+                            setAssistantGhost(aiEl, 'Summarizing earlier messages to free up context…');
+                            if (genText) genText.textContent = 'Summarizing…';
+                        } else if (json.status === 'generating') {
+                            setAssistantGhost(aiEl, 'Thinking…');
+                            if (genText) genText.textContent = 'Generating…';
+                        }
                         if (json.message && json.message.content) {
                             aiResponseText += json.message.content;
                             updateMessage(aiEl, aiResponseText);
@@ -539,8 +551,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {}
             }
 
-            state.history.push({ role: 'user', content: text });
-            state.history.push({ role: 'assistant', content: aiResponseText });
+            // Attach per-turn stats to history items so they can be exported.
+            // The extra `stats` key is harmless to the API (server ignores unknown fields).
+            state.history.push({
+                role: 'user',
+                content: text,
+                stats: stats ? { tokens: stats.user_tokens } : null
+            });
+            state.history.push({
+                role: 'assistant',
+                content: aiResponseText,
+                stats: stats ? {
+                    tokens: stats.completion_tokens,
+                    elapsed_s: stats.elapsed_s,
+                    tokens_per_s: stats.tokens_per_s
+                } : null
+            });
 
             if (stats) {
                 renderStats(userEl, aiEl, stats);
@@ -557,6 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } finally {
             app.classList.remove('generating');
+            if (genText) genText.textContent = 'Generating…';
             abortController = null;
             userInput.focus();
         }
@@ -607,6 +634,16 @@ document.addEventListener('DOMContentLoaded', () => {
         body.classList.remove('loading');
         body.innerHTML = marked.parse(text);
         highlight(body);
+        scrollToBottom();
+    }
+
+    // Show a transient status line (e.g. "Summarizing…") in the assistant bubble
+    // before real content starts streaming in.
+    function setAssistantGhost(el, text) {
+        const body = el.querySelector('.md-body');
+        if (!body) return;
+        body.classList.add('loading');
+        body.textContent = text;
         scrollToBottom();
     }
 
@@ -830,6 +867,39 @@ document.addEventListener('DOMContentLoaded', () => {
         const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+    }
+
+    // ============ Export chat ============
+    // Build the exportable object from the current conversation. Kept separate
+    // from the download so the data shape is easy to inspect/verify.
+    function buildExportObject() {
+        return {
+            app: 'LocalMind',
+            exported_at: new Date().toISOString(),
+            model: state.model || null,
+            system_prompt: state.systemPrompt || '',
+            messages: state.history.map(m => {
+                const item = { role: m.role, content: m.content };
+                if (m.stats) item.stats = m.stats;
+                return item;
+            })
+        };
+    }
+
+    function exportChat() {
+        if (!state.history.length) { showToast('Nothing to export'); return; }
+        const json = JSON.stringify(buildExportObject(), null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `localmind-chat-${ts}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Chat exported');
     }
 
     // ============ Model loading ============
