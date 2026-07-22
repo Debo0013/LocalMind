@@ -2,8 +2,6 @@
 
 <img src="./assets/localmind.svg" alt="LocalMind" width="380">
 
-# LocalMind
-
 **Private, local LLM chat for GGUF models — your machine, your models, your data.**
 
 ![Status](https://img.shields.io/badge/status-active-brightgreen) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![License](https://img.shields.io/badge/license-MIT-blue)
